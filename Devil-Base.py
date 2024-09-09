@@ -2,7 +2,9 @@ import os
 import subprocess
 import sys
 import requests
+import shutil
 from colorama import init, Fore, Style
+from tqdm import tqdm
 
 # Инициализация colorama
 init(autoreset=True)
@@ -15,14 +17,39 @@ CURRENT_VERSION = "v2"
 def get_latest_version():
     try:
         # Получаем последнюю версию из репозитория
-        response = requests.get(f"https://raw.githubusercontent.com/yourusername/yourrepository/main/{SCRIPT_NAME}")
+        response = requests.get(f"https://raw.githubusercontent.com/INSIDE-EDITS/check-bases/main/{SCRIPT_NAME}")
         response.raise_for_status()
         content = response.text
-        latest_version = content.split('\n')[0].split('=')[1].strip().strip('"')
-        return latest_version
+
+        # Ищем строку с версией
+        version_line = next((line for line in content.split('\n') if line.startswith('CURRENT_VERSION')), None)
+        if version_line:
+            latest_version = version_line.split('=')[1].strip().strip('"')
+            return latest_version
+        else:
+            print(f"{Fore.RED}[-] Не удалось найти строку с версией в файле.{Style.RESET_ALL}")
+            return None
     except Exception as e:
         print(f"{Fore.RED}[-] Ошибка при получении последней версии: {str(e)}{Style.RESET_ALL}")
         return None
+
+def download_file(url, dest):
+    try:
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        total_size = int(response.headers.get('content-length', 0))
+        with open(dest, 'wb') as f, tqdm(
+            desc=dest,
+            total=total_size,
+            unit='iB',
+            unit_scale=True,
+            unit_divisor=1024,
+        ) as bar:
+            for data in response.iter_content(1024):
+                size = f.write(data)
+                bar.update(size)
+    except Exception as e:
+        print(f"{Fore.RED}[-] Ошибка при загрузке файла: {str(e)}{Style.RESET_ALL}")
 
 def check_for_updates():
     latest_version = get_latest_version()
@@ -34,11 +61,12 @@ def check_for_updates():
     else:
         print(f"{Fore.LIGHTGREEN_EX}[+] Доступна новая версия скрипта ({latest_version}).{Style.RESET_ALL}")
         try:
-            # Обновляем скрипт
-            subprocess.run(["git", "pull"], check=True)
+            # Загружаем обновленный скрипт
+            download_file(f"https://raw.githubusercontent.com/INSIDE-EDITS/check-bases/main/{SCRIPT_NAME}", SCRIPT_NAME)
             print(f"{Fore.LIGHTGREEN_EX}[+] Скрипт обновлен до версии {latest_version}.{Style.RESET_ALL}")
             # Перезапускаем скрипт
-            os.execv(__file__, sys.argv)
+            subprocess.Popen([sys.executable, SCRIPT_NAME] + sys.argv[1:])
+            sys.exit(0)
         except Exception as e:
             print(f"{Fore.RED}[-] Ошибка при обновлении скрипта: {str(e)}{Style.RESET_ALL}")
 
@@ -53,7 +81,6 @@ def main():
     import os
     import aiofiles
     import asyncio
-    import re
     from colorama import init, Fore, Style
 
     # Инициализация colorama
@@ -88,11 +115,6 @@ def main():
         result = chardet.detect(content)
         return result['encoding']
 
-    def remove_commas_in_names(text):
-        # Регулярное выражение для поиска шаблона "Фамилия, Имя, Отчество"
-        pattern = re.compile(r'(\w+),\s*(\w+),\s*(\w+)')
-        return pattern.sub(r'\1 \2 \3', text)
-
     async def process_data(file_path, processed_bases, total_duplicates):
         try:
             print(f"\n{Fore.LIGHTGREEN_EX}[+] Обрабатывается база {os.path.basename(file_path)}{Style.RESET_ALL}")
@@ -103,9 +125,6 @@ def main():
             # Считываем данные из файла с помощью dask
             chunksize = 10 ** 6
             ddf = dd.read_csv(file_path, sep='\t', encoding=charenc, blocksize=chunksize)
-
-            # Удаляем запятые между фамилией, именем и отчеством
-            ddf = ddf.map_partitions(lambda df: df.applymap(lambda x: remove_commas_in_names(x) if isinstance(x, str) else x))
 
             # Удаляем дубликаты
             original_count = len(ddf)
