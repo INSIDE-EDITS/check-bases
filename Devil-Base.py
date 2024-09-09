@@ -9,7 +9,7 @@ init(autoreset=True)
 
 # URL репозитория на GitHub
 REPO_URL = "https://github.com/INSIDE-EDITS/check-bases.git"
-SCRIPT_NAME = "Devil Base.py"
+SCRIPT_NAME = "Devil-Base.py"
 CURRENT_VERSION = "v2"
 
 def get_latest_version():
